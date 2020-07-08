@@ -407,7 +407,16 @@ module Kafka
         end
 
         assign_partitions!
-        operation.execute
+        begin
+          operation.execute
+        rescue Kafka::MessageSizeTooLarge => e
+          @logger.error "Received unrecoverable error #{e.class}: #{e.message}"
+          @logger.info "Dropping largest message from buffer.  Current buffer size: #{@buffer.size}, bytesize: #{@buffer.bytesize}"
+          @buffer.clear_largest_message
+          @logger.info "Dropped largest message from buffer.  Current buffer size: #{@buffer.size}, bytesize: #{@buffer.bytesize}"
+          sleep @retry_backoff
+          retry
+        end
 
         if @required_acks.zero?
           # No response is returned by the brokers, so we can't know which messages
